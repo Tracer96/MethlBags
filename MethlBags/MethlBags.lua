@@ -12,8 +12,9 @@
 
 -- Constants
 local DEFAULT_COLS = 10
-local DEFAULT_SPACING = 2
-local ITEM_SIZE = 37
+local SLOT_SIZE    = 32   -- button width and height
+local H_PADDING    = 1    -- horizontal gap between buttons
+local V_PADDING    = 2    -- vertical gap between buttons (slightly more for readability)
 
 -- State
 local methlBags_sortMode = METHLBAGS_SORTBYNAME
@@ -331,6 +332,38 @@ function MethlBags_CollectBankItems()
 end
 
 --[[ ==================== ]]--
+--[[ Grid Layout Helper    ]]--
+--[[ ==================== ]]--
+
+--[[
+    Lay out item buttons in a uniform grid.
+    buttons   : array-like table of button frames (only visible/used ones)
+    parent    : the parent frame to anchor against (e.g. MethlBagsFrameItems)
+    cols      : number of columns
+    startRow  : first row index (0-based), used for stacking sections
+    Returns   : the last row index used (0-based), so callers can stack sections.
+--]]
+function MethlBags_LayoutGrid(buttons, parent, cols, startRow)
+    local lastRow = startRow
+    for i = 1, table.getn(buttons) do
+        local btn = buttons[i]
+        local idx = i - 1
+        local col = math.mod(idx, cols)
+        local row = startRow + math.floor(idx / cols)
+        if row > lastRow then lastRow = row end
+
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", parent, "TOPLEFT",
+            col  * (SLOT_SIZE + H_PADDING),
+            -row * (SLOT_SIZE + V_PADDING))
+        btn:SetWidth(SLOT_SIZE)
+        btn:SetHeight(SLOT_SIZE)
+        btn:Show()
+    end
+    return lastRow
+end
+
+--[[ ==================== ]]--
 --[[ Display Logic          ]]--
 --[[ ==================== ]]--
 
@@ -348,44 +381,63 @@ function MethlBags_UpdateDisplay()
 		items = MethlBags_SortItems(items, methlBags_sortMode)
 	end
 
-	local cols = MethlBagsSets.cols or DEFAULT_COLS
-	local space = DEFAULT_SPACING
+	local cols     = MethlBagsSets.cols or DEFAULT_COLS
 	local totalItems = table.getn(items)
 
-	-- Create/update item buttons
-	for i = 1, totalItems do
-		local item = items[i]
-		local button = getglobal("MethlBagsItem" .. i)
+	-- ---------------------------------------------------------------
+	-- Bucket items into display sections (in category-priority order)
+	-- ---------------------------------------------------------------
+	local KEY_CATS = {
+		KEYS=true, KEYS_1=true, KEYS_1_OTHER=true,
+	}
+	local CONSUMABLE_CATS = {
+		HEARTH=true, MOUNT=true, SOULSHARDS=true, CLASS_ITEMS1=true, CLASS_ITEMS2=true,
+		RUNE=true, POTION=true, HEALINGPOTION=true, MANAPOTION=true,
+		ELIXIR=true, ELIXIR_ZANZA=true, ELIXIR_BLASTEDLANDS=true,
+		FOOD=true, DRINK=true, BANDAGE=true, CONSUMABLE=true, JUJU=true,
+		EXPLOSIVE=true, WEAPON_BUFF=true, ROGUE_POISON=true, ROGUE_REAGENTS=true,
+		PRIEST_REAGENTS=true, MAGE_REAGENTS=true, WARLOCK_REAGENTS=true,
+		SHAMAN_REAGENTS=true, PALADIN_REAGENTS=true, DRUID_REAGENTS=true,
+	}
+	local TRADEGOODS_CATS = {
+		TRADETOOLS=true, RECIPE=true, PATTERN=true, SCHEMATIC=true,
+		FORMULA=true, MANUAL=true, PROJECTILE=true, TRADESKILL=true, TRADEGOODS=true,
+	}
 
+	local keyButtons         = {}
+	local consumableButtons  = {}
+	local tradegoodsButtons  = {}
+	local miscButtons        = {}
+
+	-- Build/reuse item buttons and assign to buckets
+	for i = 1, totalItems do
+		local item   = items[i]
+		local button = getglobal("MethlBagsItem" .. i)
 		if not button then
 			button = MethlBags_CreateItemButton(i)
 		end
 
-		-- Store bag/slot reference for click handling
-		button.bagID = item.bagID
-		button.slotID = item.slotID
+		button.bagID    = item.bagID
+		button.slotID   = item.slotID
 		button.itemLink = item.link
-		button.isBank = methlBags_showingBank
+		button.isBank   = methlBags_showingBank
 		button.isCached = methlBags_showingBank and not methlBags_atBank
 
-		-- Set texture
 		SetItemButtonTexture(button, item.texture)
 		SetItemButtonCount(button, item.count)
-
-		-- Quality border coloring
 		MethlBags_UpdateItemBorder(button, item.link)
-
-		-- Cooldown
 		MethlBags_UpdateItemCooldown(button, item.bagID, item.slotID)
 
-		-- Position
-		local row = math.floor((i - 1) / cols)
-		local col = math.mod(i - 1, cols)
-		button:ClearAllPoints()
-		button:SetPoint("TOPLEFT", "MethlBagsFrameItems", "TOPLEFT",
-			col * (ITEM_SIZE + space),
-			-row * (ITEM_SIZE + space))
-		button:Show()
+		local cat = item.category or "UNKNOWN"
+		if KEY_CATS[cat] then
+			table.insert(keyButtons, button)
+		elseif CONSUMABLE_CATS[cat] then
+			table.insert(consumableButtons, button)
+		elseif TRADEGOODS_CATS[cat] then
+			table.insert(tradegoodsButtons, button)
+		else
+			table.insert(miscButtons, button)
+		end
 	end
 
 	-- Hide unused buttons
@@ -395,11 +447,67 @@ function MethlBags_UpdateDisplay()
 		idx = idx + 1
 	end
 
-	-- Resize frame
-	local rows = math.ceil(totalItems / cols)
-	if rows < 1 then rows = 1 end
-	local frameWidth = cols * (ITEM_SIZE + space) - space + 20
-	local frameHeight = rows * (ITEM_SIZE + space) - space + 80  -- room for title bar and bottom buttons
+	-- ---------------------------------------------------------------
+	-- Create header labels on first call if they don't exist yet
+	-- ---------------------------------------------------------------
+	local function GetOrCreateHeader(name, parent)
+		local hdr = getglobal(name)
+		if not hdr then
+			hdr = parent:CreateFontString(name, "OVERLAY", "GameFontNormalSmall")
+			hdr:SetTextColor(0.8, 0.8, 0.8, 1.0)
+		end
+		return hdr
+	end
+
+	local parent = MethlBagsFrameItems
+	local keysHdr         = GetOrCreateHeader("MethlBagsKeysHeader",        parent)
+	local consumablesHdr  = GetOrCreateHeader("MethlBagsConsumablesHeader", parent)
+	local tradegoodsHdr   = GetOrCreateHeader("MethlBagsTradegoodsHeader",  parent)
+	local miscHdr         = GetOrCreateHeader("MethlBagsMiscHeader",         parent)
+
+	-- ---------------------------------------------------------------
+	-- Section-stacking layout helper (places header + calls LayoutGrid)
+	-- Returns the next free row after the section (0-based).
+	-- ---------------------------------------------------------------
+	local HEADER_ROWS = 1  -- each header occupies this many "slot rows" of vertical space
+
+	local function LayoutSection(buttons, header, headerText, currentRow)
+		if table.getn(buttons) == 0 then
+			header:Hide()
+			return currentRow
+		end
+
+		-- Position header label at the top of this section
+		header:ClearAllPoints()
+		header:SetPoint("TOPLEFT", parent, "TOPLEFT",
+			0,
+			-(currentRow * (SLOT_SIZE + V_PADDING)))
+		header:SetText(headerText)
+		header:Show()
+
+		local nextRow = currentRow + HEADER_ROWS
+		local lastRow = MethlBags_LayoutGrid(buttons, parent, cols, nextRow)
+		-- Return the row after the last used row (+1 gap between sections)
+		return lastRow + 1 + 1  -- +1 to move past lastRow, +1 gap
+	end
+
+	-- ---------------------------------------------------------------
+	-- Lay out all sections top-to-bottom
+	-- ---------------------------------------------------------------
+	local currentRow = 0
+	currentRow = LayoutSection(keyButtons,        keysHdr,        "Keys",        currentRow)
+	currentRow = LayoutSection(consumableButtons, consumablesHdr, "Consumables", currentRow)
+	currentRow = LayoutSection(tradegoodsButtons, tradegoodsHdr,  "Trade Goods", currentRow)
+	currentRow = LayoutSection(miscButtons,       miscHdr,         "Misc",        currentRow)
+
+	-- ---------------------------------------------------------------
+	-- Resize the outer frame to fit all sections
+	-- ---------------------------------------------------------------
+	local totalRows = currentRow  -- currentRow is already "one past the last used row"
+	if totalRows < 1 then totalRows = 1 end
+
+	local frameWidth  = cols * (SLOT_SIZE + H_PADDING) - H_PADDING + 20
+	local frameHeight = totalRows * (SLOT_SIZE + V_PADDING) - V_PADDING + 80
 
 	MethlBagsFrame:SetWidth(frameWidth)
 	MethlBagsFrame:SetHeight(frameHeight)
