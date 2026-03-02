@@ -1,0 +1,7 @@
+## Interface: 11200
+## Title: MethlBags
+## Notes: Unified one-bag inventory with bank viewing and EngBags-style sorting.
+## Author: MethlBags
+## SavedVariablesPerCharacter: MethlBagsSets
+MethlBags_Sort.lua
+MethlBags.xml
