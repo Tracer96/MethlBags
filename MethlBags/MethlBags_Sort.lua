@@ -264,14 +264,14 @@ function MethlBags_CategorizeItem(link, bagID, slotID)
 	if rarity == 0 then return "GRAY" end
 
 	-- Step 3: Tooltip pattern matching
-	for _, entry in MethlBags_TooltipSearchList do
+	for _, entry in ipairs(MethlBags_TooltipSearchList) do
 		if string.find(tooltipText, entry[2]) then
 			return entry[1]
 		end
 	end
 
 	-- Step 4: GetItemInfo type
-	local _, _, _, _, itemType = GetItemInfo(MethlBags_GetItemIDFromLink(link))
+	local _, _, _, _, _, itemType = GetItemInfo(MethlBags_GetItemIDFromLink(link))
 	if itemType and MethlBags_TypeCategories[itemType] then
 		return MethlBags_TypeCategories[itemType]
 	end
@@ -282,7 +282,7 @@ function MethlBags_CategorizeItem(link, bagID, slotID)
 		local equipSlots = {"Head", "Neck", "Shoulder", "Back", "Chest", "Wrist",
 			"Hands", "Waist", "Legs", "Feet", "Finger", "Trinket",
 			"Main Hand", "Off Hand", "One-Hand", "Two-Hand", "Ranged"}
-		for _, slot in equipSlots do
+		for _, slot in ipairs(equipSlots) do
 			if string.find(tooltipText, slot) then
 				return "SOULBOUND"
 			end
@@ -327,7 +327,7 @@ function MethlBags_SortItems(items, sortMode)
 	if not sortMode then sortMode = METHLBAGS_SORTBYNAME end
 
 	-- Assign sort keys
-	for _, item in items do
+	for _, item in ipairs(items) do
 		if item.link then
 			local category = MethlBags_CategorizeItem(item.link, item.bagID, item.slotID)
 			item.category = category

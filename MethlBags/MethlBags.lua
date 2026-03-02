@@ -249,7 +249,7 @@ end
 function MethlBags_CacheBankItems()
 	methlBags_bankCache = {}
 
-	for _, bagID in BANK_BAGS do
+	for _, bagID in ipairs(BANK_BAGS) do
 		local numSlots
 		if bagID == -1 then
 			numSlots = 24
@@ -290,7 +290,7 @@ end
 function MethlBags_CollectInventoryItems()
 	local items = {}
 
-	for _, bagID in INVENTORY_BAGS do
+	for _, bagID in ipairs(INVENTORY_BAGS) do
 		local numSlots = GetContainerNumSlots(bagID)
 		for slotID = 1, numSlots do
 			local texture, count, locked = GetContainerItemInfo(bagID, slotID)
@@ -317,7 +317,7 @@ function MethlBags_CollectBankItems()
 
 	-- Return a copy of the cache
 	local items = {}
-	for _, item in methlBags_bankCache do
+	for _, item in ipairs(methlBags_bankCache) do
 		table.insert(items, {
 			bagID = item.bagID,
 			slotID = item.slotID,

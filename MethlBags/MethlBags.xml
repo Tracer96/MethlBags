@@ -169,7 +169,7 @@
 				</Anchors>
 				<Scripts>
 					<OnShow>
-						MoneyFrame_UpdateMoney();
+						MoneyFrame_Update("MethlBagsMoneyFrame", GetMoney());
 					</OnShow>
 				</Scripts>
 			</Frame>
